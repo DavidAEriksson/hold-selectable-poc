@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, MouseEvent } from "react";
+import PurchaseModal from "./components/modal";
 
 type Block = {
   x: number;
@@ -7,12 +8,28 @@ type Block = {
   zone: 1 | 2;
 };
 
+type BlockInventory = {
+  zone1Blocks: number;
+  zone2Blocks: number;
+};
+
 export default function Home() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [inventory, setInventory] = useState<BlockInventory>({
+    zone1Blocks: 0,
+    zone2Blocks: 0,
+  });
+  const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
+  const [selectedZone, setSelectedZone] = useState<1 | 2>(1);
 
-  const ZONE1_LIMIT = 10;
-  const ZONE2_LIMIT = 20;
+  const purchaseBlocks = (zone: 1 | 2) => {
+    setInventory((prev) => ({
+      ...prev,
+      [zone === 1 ? "zone1Blocks" : "zone2Blocks"]:
+        prev[zone === 1 ? "zone1Blocks" : "zone2Blocks"] + 10,
+    }));
+  };
 
   const getZone = (x: number): 1 | 2 => {
     if (x >= 20 && x < 80) return 2;
@@ -25,19 +42,28 @@ export default function Home() {
 
   const handleMouseDown = (x: number, y: number, isRightClick: boolean) => {
     if (isRightClick) {
-      setBlocks((prev) =>
-        prev.filter((block) => !(block.x === x && block.y === y)),
+      const removedBlock = blocks.find(
+        (block) => block.x === x && block.y === y,
       );
+      if (removedBlock) {
+        setBlocks((prev) =>
+          prev.filter((block) => !(block.x === x && block.y === y)),
+        );
+        // Return block to inventory when removed
+        setInventory((prev) => ({
+          ...prev,
+          [removedBlock.zone === 1 ? "zone1Blocks" : "zone2Blocks"]:
+            prev[removedBlock.zone === 1 ? "zone1Blocks" : "zone2Blocks"] + 1,
+        }));
+      }
       return;
     }
 
     const zone = getZone(x);
-    const zoneCount = countBlocksInZone(zone);
+    const inventoryKey = zone === 1 ? "zone1Blocks" : "zone2Blocks";
 
-    if (
-      (zone === 1 && zoneCount >= ZONE1_LIMIT) ||
-      (zone === 2 && zoneCount >= ZONE2_LIMIT)
-    ) {
+    // Check if user has available blocks in their inventory
+    if (inventory[inventoryKey] <= 0) {
       return;
     }
 
@@ -45,6 +71,11 @@ export default function Home() {
     const exists = blocks.some((block) => block.x === x && block.y === y);
     if (!exists) {
       setBlocks((prev) => [...prev, { x, y, zone }]);
+      // Decrease inventory when placing a block
+      setInventory((prev) => ({
+        ...prev,
+        [inventoryKey]: prev[inventoryKey] - 1,
+      }));
     }
   };
 
@@ -52,15 +83,21 @@ export default function Home() {
     if (!isDrawing) return;
 
     const zone = getZone(x);
-    const zoneCount = countBlocksInZone(zone);
+    const inventoryKey = zone === 1 ? "zone1Blocks" : "zone2Blocks";
 
-    if ((zone === 1 && zoneCount >= 10) || (zone === 2 && zoneCount >= 20)) {
+    // Check if user has available blocks in their inventory
+    if (inventory[inventoryKey] <= 0) {
       return;
     }
 
     const exists = blocks.some((block) => block.x === x && block.y === y);
     if (!exists) {
       setBlocks((prev) => [...prev, { x, y, zone }]);
+      // Decrease inventory when placing a block
+      setInventory((prev) => ({
+        ...prev,
+        [inventoryKey]: prev[inventoryKey] - 1,
+      }));
     }
   };
 
@@ -75,38 +112,76 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
+    <div className="grid items-center justify-items-center min-h-screen p-2 pb-2 gap-2 sm:p-20 font-[family-name:var(--font-geist-sans)]">
       <div className="text-sm flex justify-between items-center bg-gray-100 p-4 rounded-lg">
         <div>
           <span className="font-semibold text-black">Zone 1 (Sides):</span>{" "}
-          <span className="text-black">
-            {countBlocksInZone(1)}/{ZONE1_LIMIT} blocks{" "}
-          </span>
-          <span className="ml-2 text-green-600">
-            ({ZONE1_LIMIT - countBlocksInZone(1)} remaining)
+          <span className="text-black">{countBlocksInZone(1)} placed</span>
+          <span className="text-green-600 ml-2">
+            ({inventory.zone1Blocks} available)
           </span>
         </div>
         <div>
           <span className="font-semibold text-black">Zone 2 (Middle):</span>{" "}
-          <span className="text-black">
-            {countBlocksInZone(2)}/{ZONE2_LIMIT} blocks{" "}
-          </span>
-          <span className="ml-2 text-green-600">
-            ({ZONE2_LIMIT - countBlocksInZone(2)} remaining)
+          <span className="text-black">{countBlocksInZone(2)} placed</span>
+          <span className="text-green-600 ml-2">
+            ({inventory.zone2Blocks} available)
           </span>
         </div>
         <button
-          onClick={() => setBlocks([])}
+          onClick={() => {
+            // Return all placed blocks to inventory before clearing
+            const zone1PlacedBlocks = blocks.filter(
+              (block) => block.zone === 1,
+            ).length;
+            const zone2PlacedBlocks = blocks.filter(
+              (block) => block.zone === 2,
+            ).length;
+
+            setInventory((prev) => ({
+              zone1Blocks: prev.zone1Blocks + zone1PlacedBlocks,
+              zone2Blocks: prev.zone2Blocks + zone2PlacedBlocks,
+            }));
+
+            setBlocks([]);
+          }}
           className="bg-red-500 hover:bg-red-600 text-white px-4 py-1 rounded-md transition-colors"
         >
           Reset Grid
         </button>
       </div>
+      <div className="flex gap-4">
+        <button
+          onClick={() => {
+            setSelectedZone(1);
+            setPurchaseModalOpen(true);
+          }}
+          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md transition-colors"
+        >
+          Buy 10 Blocks for Zone 1 (+10)
+        </button>
+        <button
+          onClick={() => {
+            setSelectedZone(2);
+            setPurchaseModalOpen(true);
+          }}
+          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md transition-colors"
+        >
+          Buy 10 Blocks for Zone 2 (+10)
+        </button>
+      </div>
+
+      <PurchaseModal
+        isOpen={purchaseModalOpen}
+        onClose={() => setPurchaseModalOpen(false)}
+        onConfirm={() => purchaseBlocks(selectedZone)}
+        zone={selectedZone}
+      />
 
       <div className="flex flex-col gap-4 w-full max-w-[1000px]">
         <div className="text-sm">
-          Zone 1: {countBlocksInZone(1)}/10 blocks | Zone 2:{" "}
-          {countBlocksInZone(2)}/20 blocks
+          Zone 1: {countBlocksInZone(1)} blocks | Zone 2: {countBlocksInZone(2)}{" "}
+          blocks
         </div>
         <div
           className="grid w-full aspect-[2/1] bg-gray-100 border border-gray-300"
